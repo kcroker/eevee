@@ -601,7 +601,8 @@ class board(object):
         # we store these things in network order, so they can just be
         # repeatedly blasted, without twiddling.
         #
-        nbicports = (socket.htons(port+1) << 16) | socket.htons(port)
+        # XXX wtf was that +1 doing there?
+        nbicports = (socket.htons(port) << 16) | socket.htons(port)
         self.pokenow(NBIC_OFFSET | REG_NBIC_PORTS, nbicports)
 
         # Even though ipaddr is a bigendian byte string
