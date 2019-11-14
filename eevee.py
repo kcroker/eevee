@@ -13,7 +13,7 @@ import socket
 import select
 import random
 
-import pdb
+#import pdb
 
 #
 # This imports the registers, control directives, magic, and port from the header files
@@ -244,7 +244,7 @@ class payload(object):
                 
 class board(object):
 
-    def __init__(self, machine, port=None, udpsport=None):
+    def __init__(self, machine, port=None, udpsport=None, anonymous=False):
 
         # Try to load the headers
         if not headersLoaded:
@@ -288,9 +288,10 @@ class board(object):
         self.delay = 0.0
         
         # Retrieve the device DNA so we know what board we are looking at
-        self.dna = bytearray()
-        self.dna.extend( (self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_HIGH)).to_bytes(4, 'big'))
-        self.dna.extend( (self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_LOW)).to_bytes(4, 'big'))
+        if not anonymous:
+            self.dna = bytearray()
+            self.dna.extend( (self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_HIGH)).to_bytes(4, 'big'))
+            self.dna.extend( (self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_LOW)).to_bytes(4, 'big'))
 
     #
     # peek() push register reads into the pending transaction
