@@ -12,8 +12,16 @@ import sys
 import socket
 import select
 import random
+import Struct
 
-#import pdb
+# Struct incantations for 
+eevee_packet_format = "!I !I !I"
+eevee_transaction_format = "!H !H"
+eevee_register_format = "!I !I"
+
+eevee_packet = struct.Struct(eevee_packet_format)
+eevee_transaction = struct.Struct(eevee_transaction_format)
+eevee_register = struct.Struct(eevee_register_format)
 
 #
 # This imports the registers, control directives, magic, and port from the header files
@@ -54,8 +62,10 @@ def loadHeaders():
             # Note that 0 given as parameter to int() turns on C-like base intuiting
             if words and words[0] == "#define" and str.isidentifier(words[1]):
                 globals()[words[1]] = int(words[2], 0)
-        except Exception as e:
-            print("eevee_regmap.h:%d does not appear to be a simple assignment.  Skipping.\n \t%s" % (n, line), e, file=sys.stderr)
+        except IndexError as e:
+            # Silently skip bad lines
+            pass
+            # print("eevee_regmap.h:%d does not appear to be a simple assignment.  Skipping.\n \t%s" % (n, line), e, file=sys.stderr)
             
     registers.close()
 
@@ -104,8 +114,12 @@ def discover(broadcast, version="cafe0003", timeout=0.2):
     # Maximally transparent request
     #
     # We should technically use the ports and magic from the header files
-    s.sendto((EEVEE_MAGIC_COOKIE).to_bytes(4, 'big') + bytes.fromhex("00000000 ffffffff"), (broadcast, int(EEVEE_SERVER_PORT)))
+    # s.sendto((EEVEE_MAGIC_COOKIE).to_bytes(4, 'big') + bytes.fromhex("00000000 ffffffff"), (broadcast, int(EEVEE_SERVER_PORT)))
 
+    # Port to
+    s.sendto(eevee_packet.pack(EEVEE_MAGIC_COOKIE, 0, ~0),
+             (broadcast, int(EEVEE_SERVER_PORT)))
+    
     # Handle responses    
     print("Discovery sent.  Collecting responses...")
     responses = []
@@ -118,7 +132,7 @@ def discover(broadcast, version="cafe0003", timeout=0.2):
     except socket.timeout as e:
         print("Done.")
 
-    print("Filtering for version %s and initializing boards..." % version)
+    print("Filtering for version %s and registering boards..." % version)
     boards = []
     for what,where in responses:
         bver = what[4:8]
@@ -186,8 +200,9 @@ class payload(object):
         
         # If the registers are not in pairs, then just fail out
         for key,value in regdict.items():
-            registerbytes.extend(key.to_bytes(EEVEE_WIDTH_REGISTER, 'big'))
-            registerbytes.extend(value.to_bytes(EEVEE_WIDTH_REGISTER, 'big'))
+            registerbytes.extend(eevee_register.pack(key, value))
+            #registerbytes.extend(key.to_bytes(EEVEE_WIDTH_REGISTER, 'big'))
+            #registerbytes.extend(value.to_bytes(EEVEE_WIDTH_REGISTER, 'big'))
 
         load.payload = registerbytes
 
@@ -200,7 +215,10 @@ class payload(object):
 
         for k in range(0, int(len(pairsinbytes) / (2*EEVEE_WIDTH_REGISTER))):
             offset = k*2*EEVEE_WIDTH_REGISTER
-            tmp[int.from_bytes(pairsinbytes[offset:offset + 4], byteorder='big')] = int.from_bytes(pairsinbytes[offset + 4:offset + 8], byteorder='big')
+            addr, word = eevee_register.unpack(pairsinbytes[offset:offset+8])
+            tmp[addr] = word
+            
+            #tmp[int.from_bytes(pairsinbytes[offset:offset + 4], byteorder='big')] = int.from_bytes(pairsinbytes[offset + 4:offset + 8], byteorder='big')
 
         return tmp
 
@@ -408,27 +426,36 @@ class board(object):
         # collects theconnection, and we want a persistent one
         frame = bytearray()
 
+        # Make the header
+        random.seed()
+        msgid = random.randrange(0, 1 << 8*EEVEE_WIDTH_SEQNUM)
+        version = (EEVEE_VERSION_HARD << 16) | EEVEE_VERSION_SOFT
+        frame.extend(eevee_packet.pack(EEVEE_MAGIC_COOKIE,
+                                       version,
+                                       msgid))
+        
         # Cookie
-        frame.extend(EEVEE_MAGIC_COOKIE.to_bytes(4, 'big'))
+        #frame.extend(EEVEE_MAGIC_COOKIE.to_bytes(4, 'big'))
 
         # Version
         # (note that the first bitshift makes a 4-byte wide dig)
-        frame.extend( ((EEVEE_VERSION_HARD << 16) | EEVEE_VERSION_SOFT).to_bytes(4, 'big'))
+        #frame.extend( ((EEVEE_VERSION_HARD << 16) | EEVEE_VERSION_SOFT).to_bytes(4, 'big'))
 
         # Message ID
         # We'll check this later when we get a response
-        random.seed()
-        msgid = random.randrange(0, 1 << 8*EEVEE_WIDTH_SEQNUM)
-        frame.extend( msgid.to_bytes(EEVEE_WIDTH_SEQNUM, 'big'))
+        #random.seed()
+        #msgid = random.randrange(0, 1 << 8*EEVEE_WIDTH_SEQNUM)
+        #frame.extend( msgid.to_bytes(EEVEE_WIDTH_SEQNUM, 'big'))
         
         # Data.  Load it all up
         response = 0
 
         for action in self.transactions:
-            frame.extend(action.op.to_bytes(2, 'big'))
-            frame.extend(len(action.payload).to_bytes(2, 'big'))
+            #frame.extend(action.op.to_bytes(2, 'big'))
+            #frame.extend(len(action.payload).to_bytes(2, 'big'))
+            frame.extend(eevee_transaction.pack(action.op, len(action.payload)))
             frame.extend(action.payload)
-
+            
             # Keep track if we expect a response...
             if (action.op & EEVEE_OP_MASK_SILENT) == 0:
                 response += 1
@@ -484,19 +511,21 @@ class board(object):
                     raise EEVEEException("Expected response from %s, but received response from %s" % (self.dest, addr))
                 
                 # Verify that the message has the correct magic
+                cookie, echover, echoid = eevee_packet.unpack(data[0:12])
+                
                 # (note that we undo network byte ordering by just reading it backwards)
-                if not int.from_bytes(data[0:4], byteorder='big') == EEVEE_MAGIC_COOKIE:
-                    raise EEVEEException("Received magic %s that was not in eevee protocol" % data[0:4].hex())
+                if not cookie == EEVEE_MAGIC_COOKIE:
+                    raise EEVEEException("Received magic %s that was not in eevee protocol" % cookie.hex())
 
                 # Verify that the message has the correct version
-                if not int.from_bytes(data[4:8], byteorder='big') == ((EEVEE_VERSION_HARD << 16) | EEVEE_VERSION_SOFT):
-                    raise EEVEEException("Received version %s, expecting %s" % (data[4:8].hex(), msgid+1))
+                if not echover == version:
+                    raise EEVEEException("Expecting version %s, received %s" % (version.hex(), echover.hex()))
                 
                 # If the message has the incorrect ID, but looks like valid everything else
                 # it can't be stale stuff, since we cleared the OS buffer before
                 # sending our request....
-                if not int.from_bytes(data[8:12], byteorder='big') == msgid+1:
-                    raise EEVEEException("Received msgid %d, expecting msgid %d.  Corrupt?" % (int.from_bytes(data[8:12], byteorder='big'), msgid+1))
+                if not msgid == echoid:
+                    raise EEVEEException("Received msgid %d, expecting msgid %d.  Corrupt?" % (echoid, msgid+1))
 
                 # Leave the while loop
                 break
@@ -521,8 +550,9 @@ class board(object):
             if self.transactions[n].op & EEVEE_OP_MASK_SILENT > 0:
                 continue
 
-            op = int.from_bytes(data[0:2], byteorder='big')
-            width = int.from_bytes(data[2:4], byteorder='big')
+            op, width = eevee_transaction.unpack(data[:4])
+            #op = int.from_bytes(data[0:2], byteorder='big')
+            #width = int.from_bytes(data[2:4], byteorder='big')
 
             # Verify message operation integrity
             if not self.transactions[n].op == op:
