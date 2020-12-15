@@ -601,7 +601,7 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
   respond = 0;
   
   // Do only 512 bytes for now.
-  packet = mallocPacket(512);
+  packet = mallocPacket(MAX_PACKET_SIZE);
   ip_header = (struct ip *)DISPLACE(packet, struct ether_header);
   udp_header = (struct udphdr *)DISPLACE(ip_header, struct ip);
   eeveehdr_out = (struct eevee *)DISPLACE(udp_header, struct udphdr);
@@ -622,7 +622,7 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
   read_boundary = (u8 *)eeveehdr_in->transaction + transaction_len - sizeof(struct eevee);
 
   // Establish the outgoing buffer boundary, so we don't overwrite and corrupt
-  boundary = packet + 512;
+  boundary = packet + MAX_PACKET_SIZE;
 
   // Set the number of output bytes to write
   len = 0;
