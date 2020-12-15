@@ -35,7 +35,10 @@
 #define EEVEE_MAGIC_COOKIE 0x1337ca75
 #define EEVEE_SERVER_PORT 1337
 #define EEVEE_NBIC_PORT 1338
-#define EEVEE_MAX_PAYLOAD 512
+
+// Maximum length of IP header (incoming): 24 bytes
+// Maximum length of UDP header (incoming): 8 bytes
+#define EEVEE_MAX_PAYLOAD 1468  // 1500 - the above 
 
 // Widths for register control protocol
 #define EEVEE_WIDTH_REGISTER 4

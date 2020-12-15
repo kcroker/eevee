@@ -12,12 +12,12 @@ import sys
 import socket
 import select
 import random
-import Struct
+import struct
 
 # Struct incantations for 
-eevee_packet_format = "!I !I !I"
-eevee_transaction_format = "!H !H"
-eevee_register_format = "!I !I"
+eevee_packet_format = "!I I I"
+eevee_transaction_format = "!H H"
+eevee_register_format = "!I I"
 
 eevee_packet = struct.Struct(eevee_packet_format)
 eevee_transaction = struct.Struct(eevee_transaction_format)
@@ -114,9 +114,6 @@ def discover(broadcast, version="cafe0003", timeout=0.2):
     # Maximally transparent request
     #
     # We should technically use the ports and magic from the header files
-    # s.sendto((EEVEE_MAGIC_COOKIE).to_bytes(4, 'big') + bytes.fromhex("00000000 ffffffff"), (broadcast, int(EEVEE_SERVER_PORT)))
-
-    # Port to
     s.sendto(eevee_packet.pack(EEVEE_MAGIC_COOKIE, 0, ~0),
              (broadcast, int(EEVEE_SERVER_PORT)))
     
@@ -200,9 +197,8 @@ class payload(object):
         
         # If the registers are not in pairs, then just fail out
         for key,value in regdict.items():
-            registerbytes.extend(eevee_register.pack(key, value))
-            #registerbytes.extend(key.to_bytes(EEVEE_WIDTH_REGISTER, 'big'))
-            #registerbytes.extend(value.to_bytes(EEVEE_WIDTH_REGISTER, 'big'))
+            # Perform the explicit cast
+            registerbytes.extend(eevee_register.pack(key, value + (1<<32) if value < 0 else value))
 
         load.payload = registerbytes
 
@@ -218,8 +214,6 @@ class payload(object):
             addr, word = eevee_register.unpack(pairsinbytes[offset:offset+8])
             tmp[addr] = word
             
-            #tmp[int.from_bytes(pairsinbytes[offset:offset + 4], byteorder='big')] = int.from_bytes(pairsinbytes[offset + 4:offset + 8], byteorder='big')
-
         return tmp
 
     ##
@@ -434,25 +428,10 @@ class board(object):
                                        version,
                                        msgid))
         
-        # Cookie
-        #frame.extend(EEVEE_MAGIC_COOKIE.to_bytes(4, 'big'))
-
-        # Version
-        # (note that the first bitshift makes a 4-byte wide dig)
-        #frame.extend( ((EEVEE_VERSION_HARD << 16) | EEVEE_VERSION_SOFT).to_bytes(4, 'big'))
-
-        # Message ID
-        # We'll check this later when we get a response
-        #random.seed()
-        #msgid = random.randrange(0, 1 << 8*EEVEE_WIDTH_SEQNUM)
-        #frame.extend( msgid.to_bytes(EEVEE_WIDTH_SEQNUM, 'big'))
-        
         # Data.  Load it all up
         response = 0
 
         for action in self.transactions:
-            #frame.extend(action.op.to_bytes(2, 'big'))
-            #frame.extend(len(action.payload).to_bytes(2, 'big'))
             frame.extend(eevee_transaction.pack(action.op, len(action.payload)))
             frame.extend(action.payload)
             
@@ -524,7 +503,7 @@ class board(object):
                 # If the message has the incorrect ID, but looks like valid everything else
                 # it can't be stale stuff, since we cleared the OS buffer before
                 # sending our request....
-                if not msgid == echoid:
+                if not echoid == msgid + 1:
                     raise EEVEEException("Received msgid %d, expecting msgid %d.  Corrupt?" % (echoid, msgid+1))
 
                 # Leave the while loop
@@ -551,8 +530,6 @@ class board(object):
                 continue
 
             op, width = eevee_transaction.unpack(data[:4])
-            #op = int.from_bytes(data[0:2], byteorder='big')
-            #width = int.from_bytes(data[2:4], byteorder='big')
 
             # Verify message operation integrity
             if not self.transactions[n].op == op:
