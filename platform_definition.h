@@ -7,8 +7,8 @@
 // Eevee works well with these stack and heap sizes
 // Notice that these will override the specifications given in
 // the generated lscript.ld
-#define _STACK_SIZE = 0x1000
-#define _HEAP_SIZE = 0x1000
+#define _STACK_SIZE = 0x1400
+#define _HEAP_SIZE = 0x1400
   
 // Use a static outgoing packet buffer?
 // This guarantees that outgoing packets will always be sent
@@ -18,8 +18,8 @@
 // It also needs to be less than the FIFO's for inbound and outbound data
 // in the uBlaze design.
 // This NEEDS to be divisible by 4, or else you will choke and die
-// #define MAX_PACKET_SIZE 512
-#define MAX_PACKET_SIZE 1518
+// Must also be large enough to hold an etherframe. So 1518 + 2 -> 1520
+#define ETH_MTU 1520
 
 // Enable the module system
 #define EEVEE_STONES

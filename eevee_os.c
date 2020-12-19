@@ -42,14 +42,13 @@ struct NIFT_eevee eevee;
 void resetFrame(void) {
   gInboundWordPos = 0;
   gCompletePacket = 0;
-#define HAX 2
 
-  memset((void *) gInboundData, 0, MAX_PACKET_SIZE + HAX);
+  memset((void *) gInboundData, 0, MAX_PACKET_SIZE + ETH_PAYLOAD_ALIGNMENT_SHIFT);
   gpInboundFrame = (u32 *) gInboundData;
 }
 
 // Hax to place the ethernet payload itself on a 4-byte alignment
-#define HAX 2
+#define ETH_PAYLOAD_ALIGNMENT_SHIFT 2
 
 //
 // If this is not run, then the fsl_iserror()
@@ -83,7 +82,7 @@ void readFsl(void) {
   if (!tempInvalid) {
 
     // If we can accept a word, write it
-    if (gInboundWordPos < MAX_PACKET_SIZE / 4)
+    if (gInboundWordPos < ETH_MTU / 4)
       memcpy(gpInboundFrame, &tempData, 4);
 
     // Always increment
@@ -98,7 +97,7 @@ void readFsl(void) {
     clearLast();
 
     // Did we overflow?
-    if (gInboundWordPos > MAX_PACKET_SIZE / 4) {
+    if (gInboundWordPos > ETH_MTU / 4) {
 
       // Yup, we overflowed
       // This puts us back at the start, ready for a new one
@@ -436,14 +435,17 @@ void* safe_memcpy(void *dest, void *src, int N, void *boundary) {
 //
 // Handle OS side things for specific register writes
 //
-int os_handler(u16 reg, u32 tmp) {
+int os_handler(void) {
 
   // Six bytes of target hardware address
   u8 tha[6];
+  u32 destip;
   
-  switch(reg) {
+  // Check to see if the destination IP changed
+  NISHI_REG_READ(destip, NBIC_OFFSET | REG_NBIC_DESTIP);
 
-  case NBIC_OFFSET | REG_NBIC_DESTIP:
+  if(destip != NIFT_ipsystem.nbic_destip) {
+
     // We're setting the destination IP address for the NBIC
     // So we need to resolve this to a mac address
 
@@ -451,13 +453,16 @@ int os_handler(u16 reg, u32 tmp) {
     // in NETWORK order because it is written to
     // the register in network order for convenience of the NBIC firmware.
     // To compare it against things we have, we need to switch it
-    tmp = Xil_Ntohl(tmp);
+    // tmp = Xil_Ntohl(tmp);
+
+    // Update the cache (to detect future changes)
+    NIFT_ipsystem.nbic_destip = destip;
     
     // Is it on our network?
-    if( (NIFT_ipsystem.ip & NIFT_ipsystem.subnet_mask) == (tmp & NIFT_ipsystem.subnet_mask) ) {
+    if( (NIFT_ipsystem.ip & NIFT_ipsystem.subnet_mask) == (destip & NIFT_ipsystem.subnet_mask) ) {
 
       // Attempt to resolve the ip address
-      if(arp_cache_resolve(tmp, tha)) {
+      if(arp_cache_resolve(destip, tha)) {
 
 	// We didn't resolve, so we've sent out an ARP request
 	// We have to hit the main loop before any response gets processed
@@ -481,28 +486,22 @@ int os_handler(u16 reg, u32 tmp) {
     // If we've not returned yet, then we successfully resolved
     // (register writes expect little endian ordered bytes)
     // (because register reads expect little endian ordered bytes)
-    memcpy(&tmp, tha + 2, 4);
-    tmp = Xil_Ntohl(tmp);
-    NISHI_REG_WRITE(NBIC_OFFSET | REG_NBIC_DESTMAC_LOW, tmp);
-    tmp = 0;
-    memcpy((u8 *)&tmp + 2, tha, 2);
-    tmp = Xil_Ntohl(tmp);
-    NISHI_REG_WRITE(NBIC_OFFSET | REG_NBIC_DESTMAC_HIGH, tmp);     
-
-    break;
-  default:
-    break;
+    memcpy(&destip, tha + 2, 4);
+    destip = Xil_Ntohl(destip);
+    NISHI_REG_WRITE(NBIC_OFFSET | REG_NBIC_DESTMAC_LOW, destip);
+    destip = 0;
+    memcpy((u8 *)&destip + 2, tha, 2);
+    destip = Xil_Ntohl(destip);
+    NISHI_REG_WRITE(NBIC_OFFSET | REG_NBIC_DESTMAC_HIGH, destip);     
   }
 
   // Success.
   return 0;
 }
 
-#define HAX 2
-
 // Cannot be accessed by modules enforced at compile time!
 #ifdef STATIC_PACKET_BUFFER
-static u8 outPacket[MAX_PACKET_SIZE + HAX];
+static u8 outPacket[ETH_MTU + ETH_PAYLOAD_ALIGNMENT_SHIFT];
 #endif
 
 // Wrappers for static backing of packet
@@ -510,24 +509,24 @@ static u8 outPacket[MAX_PACKET_SIZE + HAX];
 u8 *mallocPacket(u16 size) {
 
   // If they ask for too much, bail
-  if(size > MAX_PACKET_SIZE)
+  if(size > ETH_MTU)
     return NULL;
       
 #ifdef STATIC_PACKET_BUFFER
 
   // Don't waste time resetting stuff we don't need
-  memset(outPacket, 0, size + HAX);
-  return outPacket + HAX;
+  memset(outPacket, 0, size + ETH_PAYLOAD_ALIGNMENT_SHIFT);
+  return outPacket + ETH_PAYLOAD_ALIGNMENT_SHIFT;
 
 #else
 
   u8 *packet;
 
-  if(! (packet = memalign(4, size + HAX)))
+  if(! (packet = memalign(4, size + ETH_PAYLOAD_ALIGNMENT_SHIFT)))
     return NULL;
 
   memset(packet, 0, size);
-  packet += HAX;
+  packet += ETH_PAYLOAD_ALIGNMENT_SHIFT;
   return packet;
 
 #endif
@@ -562,7 +561,7 @@ void freePacket(u8 *packet) {
 #ifdef STATIC_PACKET_BUFFER
   return;
 #else
-  free(packet - HAX);
+  free(packet - ETH_PAYLOAD_ALIGNMENT_SHIFT);
 #endif
   
 }
@@ -601,7 +600,7 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
   respond = 0;
   
   // Do only 512 bytes for now.
-  packet = mallocPacket(MAX_PACKET_SIZE);
+  packet = mallocPacket(ETH_MTU);
   ip_header = (struct ip *)DISPLACE(packet, struct ether_header);
   udp_header = (struct udphdr *)DISPLACE(ip_header, struct ip);
   eeveehdr_out = (struct eevee *)DISPLACE(udp_header, struct udphdr);
@@ -622,7 +621,7 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
   read_boundary = (u8 *)eeveehdr_in->transaction + transaction_len - sizeof(struct eevee);
 
   // Establish the outgoing buffer boundary, so we don't overwrite and corrupt
-  boundary = packet + MAX_PACKET_SIZE;
+  boundary = packet + ETH_MTU;
 
   // Set the number of output bytes to write
   len = 0;
@@ -668,11 +667,12 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
 	  for(regptr = (struct eevee_register *) (payloadhdr_in->payload); N > 0; --N, ++regptr) {
 
 	    // So that we don't need to run this twice
-	    reg = Xil_Ntohl(regptr->addr);
-	    tmp = Xil_Ntohl(regptr->word);
+	    // Switch to little endian in the protocol
+	    //reg = Xil_Ntohl(regptr->addr);
+	    //tmp = Xil_Ntohl(regptr->word);
 
 	    NISHI_REG_WRITE(reg, tmp);
-	    os_handler(reg, tmp);
+	    // os_handler(reg, tmp);
 	  }
 	}
 
@@ -787,7 +787,10 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
     //ether_output(packet, source->smacn, ETHERTYPE_IP, len);
     transmitPacket(packet, EEVEE_SERVER_PORT, source->sip.s_addr, source->sport, len);
   }
-    
+
+  // Run os updating checks (on changed registers)
+  os_handler();
+  
   // Clean up
   freePacket(packet);
 }
@@ -1365,7 +1368,7 @@ int main(void) {
   
   // Set up cache for incoming ethernet frames
   //  initMemory();
-  gInboundData = (u8 *) memalign(4, MAX_PACKET_SIZE + HAX);
+  gInboundData = (u8 *) memalign(4, ETH_MTU + ETH_PAYLOAD_ALIGNMENT_SHIFT);
   if(!gInboundData)
     exit(2);
   
@@ -1373,7 +1376,7 @@ int main(void) {
   // A: Because the ethernet PAYLOAD must sit on a 4-byte aligned boundary
   //    or else everything else is bzzzz 
   //
-  gInboundData += HAX;
+  gInboundData += ETH_PAYLOAD_ALIGNMENT_SHIFT;
   gInboundFrame = (struct EthFrame *) gInboundData;
   resetFrame();
 
@@ -1401,6 +1404,9 @@ int main(void) {
   // Initialize an empty arp table
   NIFT_ipsystem.arpTableNext = 0;
 
+  // Set the dest_ip to bullshit
+  NIFT_ipsystem.nbic_dest_ip = ~0;
+  
   // Get on the intarwebs
   result = 5;
   while(result) {

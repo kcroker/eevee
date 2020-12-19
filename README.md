@@ -180,10 +180,16 @@ If you need to assign different values to the same register within one transacti
 
    # Execute the transaction
    response = board.transact()
-```
 
+   # Clear the transaction
+   board.clearTransactions()
+```
 Note that `poke(addr, word)` is also understood.
 The same considerations apply to `peek()`.
+
+It is important to call `clearTransactions()` when you have decided the transaction was a success.
+Current behaviour (may change, because it seems stupid a few years later) keeps the previous
+transaction, but overwritten with any echoed response.
 
 ### Delays
 After initiating a transaction, the client will block and wait for a response.

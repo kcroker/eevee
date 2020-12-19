@@ -285,6 +285,9 @@ struct NIFT_ip {
   ip4_t dhcpserver;
   ip4_t gateway;
   ip4_t subnet_mask;
+
+  // For caching registers where changes need to be processed
+  ip4_t nbic_dest_ip;
   
   // Status flag: 0 - nope, 1 - in process, 2 - good to go
   u8 configured;
