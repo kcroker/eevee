@@ -664,16 +664,8 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
 	if( (op & EEVEE_OP_MASK_REG) == EEVEE_WRITE) {
       
 	  // Iterate through the register operations
-	  for(regptr = (struct eevee_register *) (payloadhdr_in->payload); N > 0; --N, ++regptr) {
-
-	    // So that we don't need to run this twice
-	    // Switch to little endian in the protocol
-	    //reg = Xil_Ntohl(regptr->addr);
-	    //tmp = Xil_Ntohl(regptr->word);
-
+	  for(regptr = (struct eevee_register *) (payloadhdr_in->payload); N > 0; --N, ++regptr)
 	    NISHI_REG_WRITE(reg, tmp);
-	    // os_handler(reg, tmp);
-	  }
 	}
 
 	// Did we write and ask for a response OR are we reading?
@@ -700,13 +692,8 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
 	  // Only do this if we want readback!
 	  if(!(op & EEVEE_OP_MASK_NOREADBACK)) {
 	    
-	    for(regptr = (struct eevee_register *) (payloadhdr_out->payload); N > 0; --N, ++regptr) {
-
-	      NISHI_REG_READ(regptr->word, Xil_Ntohl(regptr->addr));
-
-	      // Fix outgoing byte ordering
-	      regptr->word = Xil_Htonl(regptr->word);
-	    }
+	    for(regptr = (struct eevee_register *) (payloadhdr_out->payload); N > 0; --N, ++regptr)
+	      NISHI_REG_READ(regptr->word, regptr->addr);
 	  }
 	  
 	  // Since we did a write, advance the outgoing block too

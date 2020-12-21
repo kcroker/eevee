@@ -17,7 +17,7 @@ import struct
 # Struct incantations for 
 eevee_packet_format = "!I I I"
 eevee_transaction_format = "!H H"
-eevee_register_format = "!I I"
+eevee_register_format = "I I"
 
 eevee_packet = struct.Struct(eevee_packet_format)
 eevee_transaction = struct.Struct(eevee_transaction_format)
@@ -570,7 +570,13 @@ class board(object):
                 # Not yet implemented
                 pass
 
-        return self.transactions
+        # Stash a copy of the transactions
+        tmp = self.transactions.copy()
+
+        # Clear the transactions internally
+        self.clearTransactions()
+        
+        return temp
 
     #
     # Clear pending transactions or the response
