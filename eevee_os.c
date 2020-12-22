@@ -568,7 +568,7 @@ void freePacket(u8 *packet) {
 			   
 void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int transaction_len) {
 
-  u32 tmp, reg;
+  //u32 tmp, reg;
   u8 *boundary, *read_boundary;
   u16 op, N;
   u8 *packet;
@@ -665,7 +665,7 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
       
 	  // Iterate through the register operations
 	  for(regptr = (struct eevee_register *) (payloadhdr_in->payload); N > 0; --N, ++regptr)
-	    NISHI_REG_WRITE(reg, tmp);
+	    NISHI_REG_WRITE(regptr->addr, regptr->word);
 	}
 
 	// Did we write and ask for a response OR are we reading?

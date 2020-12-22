@@ -111,9 +111,7 @@ def discover(broadcast, version="cafe0003", timeout=0.2):
 
     # Broadcast the request
     # Maximally transparent request
-    #
-    # We should technically use the ports and magic from the header files
-    s.sendto(eevee_packet.pack(EEVEE_MAGIC_COOKIE, 0, ~0),
+    s.sendto(eevee_packet.pack(EEVEE_MAGIC_COOKIE, 0, 0xffffffff),
              (broadcast, int(EEVEE_SERVER_PORT)))
     
     # Handle responses    
@@ -121,6 +119,7 @@ def discover(broadcast, version="cafe0003", timeout=0.2):
     responses = []
     try:
         while True:
+            # Argument is presumably the timeout?
             resp = s.recvfrom(11)
             what,where = resp
             print(where)
@@ -130,7 +129,7 @@ def discover(broadcast, version="cafe0003", timeout=0.2):
 
     print("Filtering for version %s and registering boards..." % version)
     boards = []
-    for what,where in responses:
+    for what, where in responses:
         bver = what[4:8]
         if not bver == bytes.fromhex(version):
             print("Dropping %s with version %s" % (where[0], bver))
@@ -142,7 +141,8 @@ def discover(broadcast, version="cafe0003", timeout=0.2):
 
     print("Final board list:")
     for b in boards:
-        print(b.dna)
+        # Stored in big endian, MAC address is the bottom 6 bytes
+        print(b.dna[2:].hex())
         
     return boards
 
@@ -168,7 +168,6 @@ class eevee_op(object):
     
     # Create a register payload
     def makeRegisterWrite(regDict, flags=0x0):
-        print("Flags:", flags)
         tmp = eevee_op(EEVEE_OP_REGISTER & (EEVEE_WRITE | flags))
 
         for key,value in regDict.items():
@@ -180,7 +179,7 @@ class eevee_op(object):
     def makeRegisterRead(regDict, flags=0x0):
         tmp = eevee_op(EEVEE_OP_REGISTER & (EEVEE_READ | flags))
 
-        for key,value in regDict.items():
+        for key, value in regDict.items():
             # Perform the explicit cast
             tmp.data.extend(eevee_register.pack(key, value + (1<<32) if value < 0 else value))
 
@@ -269,7 +268,7 @@ class board(object):
             print("TROUBLE: could not grab a datagram socket", e)
             raise
 
-        #pdb.set_trace()
+        # pdb.set_trace()
         
         # Give a delay
         self.delay = 0.0
@@ -279,8 +278,8 @@ class board(object):
             self.dna = bytearray()
 
             # Switched endianness here...
-            self.dna.extend(self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_LOW).to_bytes(4, 'little'))
-            self.dna.extend(self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_HIGH).to_bytes(4, 'little'))
+            self.dna.extend(self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_HIGH).to_bytes(4, 'big'))
+            self.dna.extend(self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_LOW).to_bytes(4, 'big'))
 
     #
     # peek() push register reads into the pending transaction
@@ -300,12 +299,10 @@ class board(object):
 
         flags = 0x0
         if silent:
-            print("Make a silent one")
             flags |= EEVEE_OP_MASK_SILENT
         if not readback:
             flags |= EEVEE_OP_MASK_NOREADBACK
 
-        print("Writing flags: ", flags)
         # Add the outgoing bytes
         if not isinstance(arg1, dict):
             arg1 = { arg1 : arg2 }
@@ -355,7 +352,6 @@ class board(object):
         # pdb.set_trace()
         
         # Return what came back
-        print(result[0].data)
         return result[0].data[addr]
 
     #
@@ -394,8 +390,8 @@ class board(object):
             
             # Keep track if we expect a response...
             if not (action.op & EEVEE_OP_MASK_SILENT):
-                print("we foudn a breather: ", not (action.op & EEVEE_OP_MASK_SILENT))
                 response += 1
+
             
         # If we exceed maximum length, clear the request and except
         if len(frame) > EEVEE_MAX_PAYLOAD:
@@ -430,10 +426,11 @@ class board(object):
             # If we're not expecting any responses, don't wait for them
             # but still return an iterable type
             if response == 0:
-                print("nowait")
-                return list()
+                # Clear the transactions
+                self.transactions = []
 
-            print("wait", response)
+                # Return an iterable
+                return list()
             
             # Otherwise wait for the response
             # This is UDP, so we are actually waiting for an entire
@@ -488,13 +485,10 @@ class board(object):
 
             # If this payload was supposed to be silent, continue
             if self.transactions[n].op & EEVEE_OP_MASK_SILENT > 0:
-                print("skipping...")
                 continue
 
             op, width = eevee_transaction.unpack(data[:4])
 
-            print("Transaction: ", n, "op: ", op, "width: ", width)
-            
             # Verify message operation integrity
             if not self.transactions[n].op == op:
                 raise EEVEEException("Received unexpected operation %s instead of %s" % (op.hex(), transaction[n].op.hex()))
@@ -517,15 +511,7 @@ class board(object):
                 if width % (EEVEE_WIDTH_REGISTER*2) > 0:
                     raise EEVEEException("Width of register operation list %d did not divide correctly" % width)
 
-                # Get the number of registers here
-                #nreg = int(width / (EEVEE_WIDTH_REGISTER*2))
-
-                # Loop over the registers.
-                # If it was a write, check the readback
-                
-                # Overwrite the transaction list with dictionaries, instead of bytes
-                #for reg in range(0, nreg):
-                print("width: ", width)
+                # Overwrite the transaction list entries with dictionaries, instead of bytes
                 self.transactions[n].data = eevee_op.bytesToRegDict(data[:width])
 
                 # Reindex
@@ -535,6 +521,9 @@ class board(object):
                 # Not yet implemented
                 pass
 
+        for x in self.transactions:
+            print("HerpesL: ", x.data)
+            
         # Stash a copy of the transactions
         tmp = self.transactions.copy()
 
