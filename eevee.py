@@ -521,9 +521,6 @@ class board(object):
                 # Not yet implemented
                 pass
 
-        for x in self.transactions:
-            print("HerpesL: ", x.data)
-            
         # Stash a copy of the transactions
         tmp = self.transactions.copy()
 
