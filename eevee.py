@@ -169,7 +169,7 @@ class eevee_op(object):
     # Create a register payload
     def makeRegisterWrite(regDict, flags=0x0):
         print("Flags:", flags)
-        tmp = eevee_op(EEVEE_OP_MASK_REG & (EEVEE_WRITE | flags))
+        tmp = eevee_op(EEVEE_OP_REGISTER & (EEVEE_WRITE | flags))
 
         for key,value in regDict.items():
             # Perform the explicit cast
@@ -178,7 +178,7 @@ class eevee_op(object):
         return tmp
 
     def makeRegisterRead(regDict, flags=0x0):
-        tmp = eevee_op(EEVEE_OP_MASK_REG & (EEVEE_READ | flags))
+        tmp = eevee_op(EEVEE_OP_REGISTER & (EEVEE_READ | flags))
 
         for key,value in regDict.items():
             # Perform the explicit cast
@@ -215,11 +215,11 @@ class eevee_op(object):
         if isinstance(payload, bytes) or isinstance(payload, bytearray):
             self.data.extend(payload)
             
-            if (op & EEVEE_OP_MASK_REG > 0) and not (op & EEVEE_OP_MASK_OTHER):
+            if (op & EEVEE_OP_REGISTER > 0) and not (op & EEVEE_OP_MASK_OTHER):
                 # Its a register operation, sanity check the width
                 if (len(self.data) % EEVEE_WIDTH_REGISTER*2) > 0:
                     raise ValueError("Register operation payloads must come in integer numbers of addr:word pairs")
-                elif not (op & EEVEE_OP_MASK_REG > 0) and (op & EEVEE_OP_MASK_OTHER):
+                elif not (op & EEVEE_OP_REGISTER > 0) and (op & EEVEE_OP_MASK_OTHER):
                     # Its some other operation
                     pass
             else:
@@ -304,7 +304,8 @@ class board(object):
             flags |= EEVEE_OP_MASK_SILENT
         if not readback:
             flags |= EEVEE_OP_MASK_NOREADBACK
-            
+
+        print("Writing flags: ", flags)
         # Add the outgoing bytes
         if not isinstance(arg1, dict):
             arg1 = { arg1 : arg2 }
@@ -393,7 +394,7 @@ class board(object):
             
             # Keep track if we expect a response...
             if not (action.op & EEVEE_OP_MASK_SILENT):
-                print("we foudn a breather")
+                print("we foudn a breather: ", not (action.op & EEVEE_OP_MASK_SILENT))
                 response += 1
             
         # If we exceed maximum length, clear the request and except
@@ -487,6 +488,7 @@ class board(object):
 
             # If this payload was supposed to be silent, continue
             if self.transactions[n].op & EEVEE_OP_MASK_SILENT > 0:
+                print("skipping...")
                 continue
 
             op, width = eevee_transaction.unpack(data[:4])
@@ -509,7 +511,7 @@ class board(object):
             data = data[4:]
 
             # If its a register operation, process it as such
-            if op & EEVEE_OP_MASK_REG > 0:
+            if op & EEVEE_OP_REGISTER > 0:
 
                 # Make sure the width makes sense
                 if width % (EEVEE_WIDTH_REGISTER*2) > 0:

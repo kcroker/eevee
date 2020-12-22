@@ -661,7 +661,7 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
 	N = width / sizeof(struct eevee_register);
 	
 	// Perform writes?
-	if( (op & EEVEE_OP_MASK_REG) == EEVEE_WRITE) {
+	if( (op & EEVEE_OP_REGISTER) == EEVEE_WRITE) {
       
 	  // Iterate through the register operations
 	  for(regptr = (struct eevee_register *) (payloadhdr_in->payload); N > 0; --N, ++regptr)
@@ -669,7 +669,7 @@ void eevee_input(struct NIFT_source *source, struct eevee *eeveehdr_in, int tran
 	}
 
 	// Did we write and ask for a response OR are we reading?
-	if(!(op & EEVEE_OP_MASK_SILENT) || ( (op & EEVEE_OP_MASK_REG) == EEVEE_READ) ) {
+	if(!(op & EEVEE_OP_MASK_SILENT) || ( (op & EEVEE_OP_REGISTER) == EEVEE_READ) ) {
 
 	  // Flag a response
 	  respond = 1;
