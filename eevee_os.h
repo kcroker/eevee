@@ -198,7 +198,7 @@ struct EthFrame {
 
   // Start porting this over to standard stuff
   struct ether_header eheader;
-  u8  payload[MAX_PACKET_SIZE - ETH_HEADER_SIZE];
+  u8  payload[ETH_MTU - ETH_HEADER_SIZE];
 } __attribute__ ((aligned(2)));
 
 
@@ -287,7 +287,7 @@ struct NIFT_ip {
   ip4_t subnet_mask;
 
   // For caching registers where changes need to be processed
-  ip4_t nbic_dest_ip;
+  ip4_t nbic_destip;
   
   // Status flag: 0 - nope, 1 - in process, 2 - good to go
   u8 configured;

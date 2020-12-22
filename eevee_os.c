@@ -25,7 +25,11 @@
 
 // From: ethMain.c
 
+// Hax to place the ethernet payload itself on a 4-byte alignment
+#define ETH_PAYLOAD_ALIGNMENT_SHIFT 2
+
 // Buffers for input data
+u8 gInboundData_buffer[ETH_MTU + ETH_PAYLOAD_ALIGNMENT_SHIFT];
 u8 *gInboundData;
 struct EthFrame *gInboundFrame;
 
@@ -35,7 +39,6 @@ u32 gCompletePacket = 0;
 u32 *gpInboundFrame;
 
 // Now some internal structures I use for keeping track of myself
-
 struct NIFT_ip NIFT_ipsystem;
 struct NIFT_eevee eevee;
 
@@ -43,12 +46,9 @@ void resetFrame(void) {
   gInboundWordPos = 0;
   gCompletePacket = 0;
 
-  memset((void *) gInboundData, 0, MAX_PACKET_SIZE + ETH_PAYLOAD_ALIGNMENT_SHIFT);
+  memset((void *) gInboundData, 0, ETH_MTU + ETH_PAYLOAD_ALIGNMENT_SHIFT);
   gpInboundFrame = (u32 *) gInboundData;
 }
-
-// Hax to place the ethernet payload itself on a 4-byte alignment
-#define ETH_PAYLOAD_ALIGNMENT_SHIFT 2
 
 //
 // If this is not run, then the fsl_iserror()
@@ -1354,16 +1354,17 @@ int main(void) {
   eevee.version |= (EEVEE_VERSION_MASK_SOFT & EEVEE_VERSION_SOFT);
   
   // Set up cache for incoming ethernet frames
+  // Use static allocation for this.  Stupid shenegains
   //  initMemory();
-  gInboundData = (u8 *) memalign(4, ETH_MTU + ETH_PAYLOAD_ALIGNMENT_SHIFT);
-  if(!gInboundData)
-    exit(2);
+  // gInboundData = (u8 *) memalign(4, ETH_MTU + ETH_PAYLOAD_ALIGNMENT_
+  // if(!gInboundData)
+  //  exit(2);
   
   // KC 9/13/18 - why are we advancing 2 pointer widths?
   // A: Because the ethernet PAYLOAD must sit on a 4-byte aligned boundary
   //    or else everything else is bzzzz 
   //
-  gInboundData += ETH_PAYLOAD_ALIGNMENT_SHIFT;
+  gInboundData = gInboundData_buffer + ETH_PAYLOAD_ALIGNMENT_SHIFT;
   gInboundFrame = (struct EthFrame *) gInboundData;
   resetFrame();
 
@@ -1392,7 +1393,7 @@ int main(void) {
   NIFT_ipsystem.arpTableNext = 0;
 
   // Set the dest_ip to bullshit
-  NIFT_ipsystem.nbic_dest_ip = ~0;
+  NIFT_ipsystem.nbic_destip = ~0;
   
   // Get on the intarwebs
   result = 5;
@@ -1473,5 +1474,5 @@ int main(void) {
   }
   
   // Clean up the frame
-  free(gInboundData - 2);
+  // free(gInboundData - 2);
 }
