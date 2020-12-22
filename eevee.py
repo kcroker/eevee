@@ -65,7 +65,6 @@ def loadHeaders():
         except IndexError as e:
             # Silently skip bad lines
             pass
-            # print("eevee_regmap.h:%d does not appear to be a simple assignment.  Skipping.\n \t%s" % (n, line), e, file=sys.stderr)
             
     registers.close()
 
@@ -83,7 +82,7 @@ def loadHeaders():
             if words and words[0] == "#define" and str.isidentifier(words[1]):
                 globals()[words[1]] = int(words[2], 0)                
         except Exception as e:
-            print("eevee_control.h:%d does not appear to be a simple assignment.  Skipping. \n \t%s" % (n, line), e, file=sys.stderr)
+            pass
 
     commands.close()
 
@@ -576,7 +575,7 @@ class board(object):
         # Clear the transactions internally
         self.clearTransactions()
         
-        return temp
+        return tmp
 
     #
     # Clear pending transactions or the response
