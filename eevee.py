@@ -153,7 +153,7 @@ def discover(broadcast, version="cafe0003", timeout=0.2):
 # they are writing a new type of payload (i.e. not a register
 # transaction)
 #
-class payload(object):
+class eevee_op(object):
 
     ##
     ## Factory methods
@@ -167,45 +167,30 @@ class payload(object):
     #
     
     # Create a register payload
-    def makeRegisterWrite(regDict=None, silent=False):
-        tmp = payload(EEVEE_OP_MASK_REG & (EEVEE_WRITE | (EEVEE_OP_MASK_SILENT if silent else 0x0)))
-        if not regDict is None:
-            if not isinstance(regDict, dict):
-                raise TypeError("The register pairs must be a dictionary...")
-            else:
-                registerPopulate(tmp, regDict)
-                
-        return tmp
+    def makeRegisterWrite(regDict, flags=0x0):
+        print("Flags:", flags)
+        tmp = eevee_op(EEVEE_OP_MASK_REG & (EEVEE_WRITE | flags))
 
-    def makeRegisterRead(regDict=None, silent=False):
-        tmp = payload(EEVEE_OP_MASK_REG & (EEVEE_READ | (EEVEE_OP_MASK_SILENT if silent else 0x0)))
-        if not regDict is None:
-            if not isinstance(regDict, list):
-                raise TypeError("The list of register pairs must be a list...")
-            else:
-                registerPopulate(tmp, regDict)
-                
-        return tmp
-
-    ##
-    ## Static methods 
-    ##
-    def registerPopulate(load, regdict):
-
-        registerbytes = bytearray()
-        
-        # If the registers are not in pairs, then just fail out
-        for key,value in regdict.items():
+        for key,value in regDict.items():
             # Perform the explicit cast
-            registerbytes.extend(eevee_register.pack(key, value + (1<<32) if value < 0 else value))
+            tmp.data.extend(eevee_register.pack(key, value + (1<<32) if value < 0 else value))
+            
+        return tmp
 
-        load.payload = registerbytes
+    def makeRegisterRead(regDict, flags=0x0):
+        tmp = eevee_op(EEVEE_OP_MASK_REG & (EEVEE_READ | flags))
+
+        for key,value in regDict.items():
+            # Perform the explicit cast
+            tmp.data.extend(eevee_register.pack(key, value + (1<<32) if value < 0 else value))
+
+        return tmp
 
     #
     # Return a dictionary based on a transaction payload, assuming it is
     # a register transaction
     #
-    def bigBytesToReglist(pairsinbytes):
+    def bytesToRegDict(pairsinbytes):
         tmp = {}
 
         for k in range(0, int(len(pairsinbytes) / (2*EEVEE_WIDTH_REGISTER))):
@@ -214,15 +199,6 @@ class payload(object):
             tmp[addr] = word
             
         return tmp
-
-    ##
-    ## Object methods
-    ## 
-    def toggleSilent(self):
-        self.op ^= EEVEE_OP_MASK_SILENT
-
-    def toggleReadback(self):
-        self.op ^= EEVEE_OP_MASK_NOREADBACK
         
     def __init__(self, op, payload=None):
 
@@ -234,14 +210,14 @@ class payload(object):
         self.op = op
 
         # Make a new bytearray()
-        self.payload = bytearray()
+        self.data = bytearray()
 
         if isinstance(payload, bytes) or isinstance(payload, bytearray):
-            self.payload.extend(payload)
+            self.data.extend(payload)
             
             if (op & EEVEE_OP_MASK_REG > 0) and not (op & EEVEE_OP_MASK_OTHER):
                 # Its a register operation, sanity check the width
-                if (len(self.payload) % EEVEE_WIDTH_REGISTER*2) > 0:
+                if (len(self.data) % EEVEE_WIDTH_REGISTER*2) > 0:
                     raise ValueError("Register operation payloads must come in integer numbers of addr:word pairs")
                 elif not (op & EEVEE_OP_MASK_REG > 0) and (op & EEVEE_OP_MASK_OTHER):
                     # Its some other operation
@@ -301,57 +277,39 @@ class board(object):
         # Retrieve the device DNA so we know what board we are looking at
         if not anonymous:
             self.dna = bytearray()
-            self.dna.extend( (self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_HIGH)).to_bytes(4, 'big'))
-            self.dna.extend( (self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_LOW)).to_bytes(4, 'big'))
+
+            # Switched endianness here...
+            self.dna.extend(self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_LOW).to_bytes(4, 'little'))
+            self.dna.extend(self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_HIGH).to_bytes(4, 'little'))
 
     #
     # peek() push register reads into the pending transaction
     #
     def peek(self, arg1):
 
-        # So there are two ways we can use this:
-        #   peek( { reg1:arbitrary, reg2:arbitrary, ... } )   [ordered or unordered dictionary type]
-        #   peek( reg ) 
-        
-        load = payload.makeRegisterRead()
-
         # Add the outgoing bytes
-        if isinstance(arg1, dict):
-            payload.registerPopulate(load, arg1)
-        elif isinstance(arg1, int):
-            payload.registerPopulate(load, { arg1 : 0x0 }) 
-        else:
-            raise EEVEEException("Could not interpret %s in any sensible way" % (arg1))
+        if not isinstance(arg1, dict):
+            arg1 = { arg1 : 0x0 }
 
-        # Append this action to the transactions
-        # I gotta fix my nomenclature here...
-        self.transactions.append(load)
+        # Make it
+        self.transactions.append(eevee_op.makeRegisterRead(arg1))
     #
     # poke() push register writes into the pending transaction
     #
     def poke(self, arg1, arg2=None, silent=False, readback=True):
 
-        # So there are two ways we can use this:
-        #   poke( { reg1:word1, reg2:word2, ... } )   [ordered or unordered dictionary type]
-        #   poke( reg, word ) 
-
-        load = payload.makeRegisterWrite()
-
-        # Did we request the silent treatment?
+        flags = 0x0
         if silent:
-            load.toggleSilent()
+            print("Make a silent one")
+            flags |= EEVEE_OP_MASK_SILENT
         if not readback:
-            load.toggleReadback()
-
+            flags |= EEVEE_OP_MASK_NOREADBACK
+            
         # Add the outgoing bytes
-        if isinstance(arg1, dict) and arg2 is None:
-            payload.registerPopulate(load, arg1)
-        elif isinstance(arg1, int) and isinstance(arg2, int):
-            payload.registerPopulate(load, { arg1 : arg2 })
-        else:
-            raise EEVEEException("Could not interpret %s and %s in any sensible way" % (arg1, arg2))
+        if not isinstance(arg1, dict):
+            arg1 = { arg1 : arg2 }
 
-        self.transactions.append(load)
+        self.transactions.append(eevee_op.makeRegisterWrite(arg1, flags=flags))
         
     #
     # pokenow() do a one off register write
@@ -366,17 +324,16 @@ class board(object):
         # Make a new one
         self.transactions = []
         self.poke(addr, word, silent, readback)
-        self.transact()
+        result = self.transact()
 
         # Restore the previous transaction pile
-        result = self.transactions
         self.transactions = tmp
 
         # Return what came back
         if silent:
             return
         else:
-            return result[0].payload[addr]
+            return result[0].data[addr]
 
     #
     # peeknow() do a one off register read
@@ -389,16 +346,16 @@ class board(object):
         # Make a new one
         self.transactions = []
         self.peek(addr)
-        self.transact()
+        result = self.transact()
 
         # Restore the previous transaction pile
-        result = self.transactions
         self.transactions = tmp
 
         # pdb.set_trace()
         
         # Return what came back
-        return result[0].payload[addr]
+        print(result[0].data)
+        return result[0].data[addr]
 
     #
     # transact() tries to flush the request queue and return a tuple
@@ -431,11 +388,12 @@ class board(object):
         response = 0
 
         for action in self.transactions:
-            frame.extend(eevee_transaction.pack(action.op, len(action.payload)))
-            frame.extend(action.payload)
+            frame.extend(eevee_transaction.pack(action.op, len(action.data)))
+            frame.extend(action.data)
             
             # Keep track if we expect a response...
-            if (action.op & EEVEE_OP_MASK_SILENT) == 0:
+            if not (action.op & EEVEE_OP_MASK_SILENT):
+                print("we foudn a breather")
                 response += 1
             
         # If we exceed maximum length, clear the request and except
@@ -471,8 +429,11 @@ class board(object):
             # If we're not expecting any responses, don't wait for them
             # but still return an iterable type
             if response == 0:
+                print("nowait")
                 return list()
 
+            print("wait", response)
+            
             # Otherwise wait for the response
             # This is UDP, so we are actually waiting for an entire
             # response datagram.  So once we can read, we read the maxiumum
@@ -530,13 +491,15 @@ class board(object):
 
             op, width = eevee_transaction.unpack(data[:4])
 
+            print("Transaction: ", n, "op: ", op, "width: ", width)
+            
             # Verify message operation integrity
             if not self.transactions[n].op == op:
                 raise EEVEEException("Received unexpected operation %s instead of %s" % (op.hex(), transaction[n].op.hex()))
 
             # Verify message width integrtiy
-            if not len(self.transactions[n].payload) == width:
-                raise EEVEEException("Received a payload width %d not in agreement with expectation %d" % (width, len(transaction[n].payload)))
+            if not len(self.transactions[n].data) == width:
+                raise EEVEEException("Received a payload width %d not in agreement with expectation %d" % (width, len(transaction[n].data)))
 
             # Did this operation fail?  If so, append its index to the failures list
             if op & EEVEE_OP_MASK_FAILURE > 0:
@@ -553,14 +516,15 @@ class board(object):
                     raise EEVEEException("Width of register operation list %d did not divide correctly" % width)
 
                 # Get the number of registers here
-                nreg = int(width / (EEVEE_WIDTH_REGISTER*2))
+                #nreg = int(width / (EEVEE_WIDTH_REGISTER*2))
 
                 # Loop over the registers.
                 # If it was a write, check the readback
                 
                 # Overwrite the transaction list with dictionaries, instead of bytes
-                for reg in range(0, nreg):
-                    self.transactions[n].payload = payload.bigBytesToReglist(data[:width])
+                #for reg in range(0, nreg):
+                print("width: ", width)
+                self.transactions[n].data = eevee_op.bytesToRegDict(data[:width])
 
                 # Reindex
                 data = data[width:]

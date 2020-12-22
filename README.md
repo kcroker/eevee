@@ -237,7 +237,7 @@ This can be diagnosed with silent mode
 
 ## Responses
 The `response` is a list of `payload` objects.
-A `payload` consists of an operation `op`, like a register manipulation, and a `payload` (sorry for the naming) containing whatever data was returned by the board for that operation.
+A `payload` consists of an operation `op`, like a register manipulation, and a `data` containing whatever data was returned by the board for that operation.
 In the case of register transactions, each `payload` is returned as a `dict()` type.
 If something within a transaction was run in silent mode
 

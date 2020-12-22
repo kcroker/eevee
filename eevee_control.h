@@ -17,9 +17,10 @@
 //   Bit 5     No readback
 // Flag bits for the register interface
 #define EEVEE_OP_MASK_REG         0x0003 // 0-1 bits for the register operation
-#define EEVEE_OP_MASK_SILENT      0x0008 // 3-rd bit position = 8
-#define EEVEE_OP_MASK_FAILURE     0x0010 // 4-th bit position = 16
-#define EEVEE_OP_MASK_NOREADBACK  0x0020 // 5-th bit position = 32
+#define EEVEE_OP_MASK_SILENT      0x0004 // 2-nd bit position = 4
+#define EEVEE_OP_MASK_FAILURE     0x0008 // 3-rd bit position = 8
+#define EEVEE_OP_MASK_NOREADBACK  0x0010 // 4-th bit position = 16
+#define EEVEE_OP_MASK_RESERVED    0x0020 // 5-th bit position = 32
 
 // Masks for register/other operations
 #define EEVEE_OP_REGISTER      0x003f  // bottom 6 bits (3 in flags, 3 in register op)
