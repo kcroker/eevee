@@ -281,6 +281,10 @@ class board(object):
             self.dna.extend(self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_HIGH).to_bytes(4, 'big'))
             self.dna.extend(self.peeknow(INTERNAL_OFFSET | REG_INTERNAL_DNA_LOW).to_bytes(4, 'big'))
 
+        # We got this far, go ahead and aim at ourselves
+        self.aimNBIC()
+        
+
     #
     # peek() push register reads into the pending transaction
     #

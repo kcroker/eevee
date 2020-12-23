@@ -445,7 +445,7 @@ int os_handler(void) {
   NISHI_REG_READ(destip, NBIC_OFFSET | REG_NBIC_DESTIP);
 
   // Hardware registers for the IP system are stored in BIG ENDIAN
-  destip = Xil_Ntohl(destip)
+  destip = Xil_Ntohl(destip);
     
   if(destip != NIFT_ipsystem.nbic_destip) {
 
