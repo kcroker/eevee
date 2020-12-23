@@ -10,14 +10,18 @@ The client-side provides a paired Python 3 library that speaks this protocol.
 We have confirmed successful ELF builds with Xilinx SDK that comes with the Spartan6 "appliance" and Vivado 2018.1.
 When creating your SDK project, just link the files from your local git repository.
 Your ISE or Vivado can export the appropriate "board support package" for your SDK project.
-The following values for stack and heap are set by default in `platform_definition.h.`
+The following values for stack and heap can be set by default in `platform_definition.h.`
 
 Region | Size
 --- | ---
-Heap | 0x1000
-Stack | 0x1000
+Heap | 0x1F00
+Stack | 0x1B00
 
 They have been verified with the current version, through both can probably be trimmed.
+**NOTE** Unfortunately, depending on how broken (featureful) your Xilinx tools are, you may also need to set (within SDK) the `lscript.ld` file's
+"Available Memory Regions" Size parameter to `0xFFFF`.
+There seems no way to easily set this via header files.
+
 
 ### Technical notes
 For ELF size, a number of simplifying design decisions have been made.
