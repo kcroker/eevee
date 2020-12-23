@@ -567,11 +567,11 @@ class board(object):
         # repeatedly blasted, without twiddling.
         #
         # XXX wtf was that +1 doing there?
-        nbicports = (socket.htons(port) << 16) | socket.htons(port)
+        nbicports = (port << 16) | port
         self.pokenow(NBIC_OFFSET | REG_NBIC_PORTS, nbicports)
 
         # Even though ipaddr is a bigendian byte string
         # It needs to be written to the register as a big endian byte string
         # So its network order is actually little endian.  endianness sucks.
-        self.pokenow(NBIC_OFFSET | REG_NBIC_DESTIP, int.from_bytes(ipaddr, byteorder='little'))
+        self.pokenow(NBIC_OFFSET | REG_NBIC_DESTIP, int.from_bytes(ipaddr, byteorder='big'))
         
