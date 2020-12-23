@@ -444,6 +444,9 @@ int os_handler(void) {
   // Check to see if the destination IP changed
   NISHI_REG_READ(destip, NBIC_OFFSET | REG_NBIC_DESTIP);
 
+  // Hardware registers for the IP system are stored in BIG ENDIAN
+  destip = Xil_Ntohl(destip)
+    
   if(destip != NIFT_ipsystem.nbic_destip) {
 
     // We're setting the destination IP address for the NBIC
@@ -1392,8 +1395,8 @@ int main(void) {
   // Initialize an empty arp table
   NIFT_ipsystem.arpTableNext = 0;
 
-  // Set the dest_ip to bullshit
-  NIFT_ipsystem.nbic_destip = ~0;
+  // Set the dest_ip to bullshit (that the router won't drop...)
+  NIFT_ipsystem.nbic_destip = 0;
   
   // Get on the intarwebs
   result = 5;
