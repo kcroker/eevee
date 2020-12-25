@@ -21,6 +21,9 @@
 // Must also be large enough to hold an etherframe. So 1518 + 2 -> 1520
 #define ETH_MTU 1520
 
+// This is the above number divided by 4
+#define ETH_MTU_D4 380
+
 // Disable the module system
 #undef EEVEE_STONES
 

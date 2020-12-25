@@ -42,13 +42,15 @@ u32 *gpInboundFrame;
 struct NIFT_ip NIFT_ipsystem;
 struct NIFT_eevee eevee;
 
-void resetFrame(void) {
-  gInboundWordPos = 0;
-  gCompletePacket = 0;
+#define RESET_FRAME() (gInboundWordPos = gCompletePacket = 0, gpInboundFrame = (u32 *)gInboundData)
 
-  memset((void *) gInboundData, 0, ETH_MTU + ETH_PAYLOAD_ALIGNMENT_SHIFT);
-  gpInboundFrame = (u32 *) gInboundData;
-}
+/* void resetFrame(void) { */
+/*   gInboundWordPos = 0; */
+/*   gCompletePacket = 0; */
+
+/*   memset((void *) gInboundData, 0, ETH_MTU + ETH_PAYLOAD_ALIGNMENT_SHIFT); */
+/*   gpInboundFrame = (u32 *) gInboundData; */
+/* } */
 
 //
 // If this is not run, then the fsl_iserror()
@@ -65,8 +67,8 @@ void clearLast() {
 // later, abstract this.
 void readFsl(void) {
 
-  u32 tempInvalid = 0;
-  u32 tempLast = 0;
+  register u32 tempInvalid = 0;
+  register u32 tempLast = 0;
   u32 tempData = 0;
 
   // This is a macro to some ublaze assembly it seems... (UG081)
@@ -82,7 +84,8 @@ void readFsl(void) {
   if (!tempInvalid) {
 
     // If we can accept a word, write it
-    if (gInboundWordPos < ETH_MTU / 4)
+    if (gInboundWordPos < ETH_MTU_D4)
+      //*gpInboundFrame = tempData;
       memcpy(gpInboundFrame, &tempData, 4);
 
     // Always increment
@@ -97,11 +100,11 @@ void readFsl(void) {
     clearLast();
 
     // Did we overflow?
-    if (gInboundWordPos > ETH_MTU / 4) {
+    if (gInboundWordPos > ETH_MTU_D4) {
 
       // Yup, we overflowed
       // This puts us back at the start, ready for a new one
-      resetFrame();
+      RESET_FRAME();
     }
     else {
       // No overflow condition, packet is good
@@ -1369,7 +1372,11 @@ int main(void) {
   //
   gInboundData = gInboundData_buffer + ETH_PAYLOAD_ALIGNMENT_SHIFT;
   gInboundFrame = (struct EthFrame *) gInboundData;
-  resetFrame();
+
+  // Do clear it once
+  memset(gInboundData_buffer, 0, ETH_MTU);
+  
+  RESET_FRAME();
 
   
   /* Get the MAC address of the interface */
@@ -1420,7 +1427,7 @@ int main(void) {
 	readFsl();
 
       ether_input(gInboundData);
-      resetFrame();
+      RESET_FRAME();
     }
       
     // If we completed, write it and break
@@ -1472,7 +1479,7 @@ int main(void) {
     // If we have an entire packet, process it
     if(gCompletePacket) {
       ether_input(gInboundData);
-      resetFrame();
+      RESET_FRAME();
     }      
   }
   
