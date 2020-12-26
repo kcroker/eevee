@@ -36,42 +36,29 @@ struct EthFrame *gInboundFrame;
 // Variables for tracking incoming data buffer positions and status
 u32 gInboundWordPos = 0;
 u32 gCompletePacket = 0;
-u32 *gpInboundFrame;
+u8 *gpInboundFrame;
 
 // Now some internal structures I use for keeping track of myself
 struct NIFT_ip NIFT_ipsystem;
 struct NIFT_eevee eevee;
 
-#define RESET_FRAME() (gInboundWordPos = gCompletePacket = 0, gpInboundFrame = (u32 *)gInboundData)
-
-/* void resetFrame(void) { */
-/*   gInboundWordPos = 0; */
-/*   gCompletePacket = 0; */
-
-/*   memset((void *) gInboundData, 0, ETH_MTU + ETH_PAYLOAD_ALIGNMENT_SHIFT); */
-/*   gpInboundFrame = (u32 *) gInboundData; */
-/* } */
-
-//
-// If this is not run, then the fsl_iserror()
-// will always adjust its argument so as to suggest that the a packet is complete
-//
-void clearLast() {
-	u32 msrData = mfmsr();
-	msrData &= ~0x10;
-	mtmsr(msrData);
-}
+#define RESET_FRAME() (gInboundWordPos = gCompletePacket = 0, gpInboundFrame = gInboundData)
 
 // Reads a single word off of a given channel
 // KC 10/18/18: changed to a single channel for now.
 // later, abstract this.
-void readFsl(void) {
 
-  register u32 tempInvalid = 0;
-  register u32 tempLast = 0;
-  u32 tempData = 0;
+// Tell the compiler to inline this (looks like the compiler already was)
+static inline void readFsl(void) {
 
+  // I don't think these assignments need to be in here
+  register u32 tempInvalid;
+  register u32 tempLast;
+  register u8 *src;
+  u32 tempData;
+  
   // This is a macro to some ublaze assembly it seems... (UG081)
+  // Always draw down the FIFO
   getfslx(tempData, 0, FSL_NONBLOCKING);
 
   // OOO: These must be macros, since they mutate the values given as arguments
@@ -84,32 +71,33 @@ void readFsl(void) {
   if (!tempInvalid) {
 
     // If we can accept a word, write it
-    if (gInboundWordPos < ETH_MTU_D4)
-      //*gpInboundFrame = tempData;
-      memcpy(gpInboundFrame, &tempData, 4);
-
+    if (gInboundWordPos < ETH_MTU_D4) {
+      src = (u8 *)&tempData;
+      
+      gpInboundFrame[0] = src[0];
+      gpInboundFrame[1] = src[1];
+      gpInboundFrame[2] = src[2];
+      gpInboundFrame[3] = src[3];
+    }
     // Always increment
     ++gInboundWordPos;
-    ++gpInboundFrame;
+    gpInboundFrame += 4;
   }
 
   // Update the last flag
   if (tempLast) {
 
-    // Do some black magic
-    clearLast();
+    // Inline and recycle clearLast()
+    // All of the Xilinx calls here are macros
+    tempData = mfmsr();
+    tempData &= ~0x10;
+    mtmsr(tempData);
 
     // Did we overflow?
-    if (gInboundWordPos > ETH_MTU_D4) {
-
-      // Yup, we overflowed
-      // This puts us back at the start, ready for a new one
+    if (gInboundWordPos > ETH_MTU_D4)
       RESET_FRAME();
-    }
-    else {
-      // No overflow condition, packet is good
+    else
       gCompletePacket = 1;
-    }
   }
 }
 
@@ -1474,6 +1462,7 @@ int main(void) {
 #endif
     
     // Take in some bytes from the SFP
+    // I wonder if the compiler is inlining this?
     readFsl();
 
     // If we have an entire packet, process it

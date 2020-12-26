@@ -172,7 +172,7 @@ class eevee_op(object):
 
         for key,value in regDict.items():
             # Perform the explicit cast
-            tmp.data.extend(eevee_register.pack(key, value + (1<<32) if value < 0 else value))
+            tmp.data.extend(eevee_register.pack(key, value))# + (1<<32) if value < 0 else value))
             
         return tmp
 
@@ -181,7 +181,7 @@ class eevee_op(object):
 
         for key, value in regDict.items():
             # Perform the explicit cast
-            tmp.data.extend(eevee_register.pack(key, value + (1<<32) if value < 0 else value))
+            tmp.data.extend(eevee_register.pack(key, value))# + (1<<32) if value < 0 else value))
 
         return tmp
 
@@ -473,7 +473,6 @@ class board(object):
             else:
                 # Didn't get a response.  Try again.
                 attempts -= 1
-                print("Response timed out... Trying %d more times." % attempts, file=sys.stderr)
                 continue
 
         # If we timed out, raise an exception
