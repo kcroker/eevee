@@ -509,7 +509,7 @@ u8 *mallocPacket(u16 size) {
 #ifdef STATIC_PACKET_BUFFER
 
   // Don't waste time resetting stuff we don't need
-  memset(outPacket, 0, size + ETH_PAYLOAD_ALIGNMENT_SHIFT);
+  // memset(outPacket, 0, size + ETH_PAYLOAD_ALIGNMENT_SHIFT);
   return outPacket + ETH_PAYLOAD_ALIGNMENT_SHIFT;
 
 #else
@@ -519,7 +519,7 @@ u8 *mallocPacket(u16 size) {
   if(! (packet = memalign(4, size + ETH_PAYLOAD_ALIGNMENT_SHIFT)))
     return NULL;
 
-  memset(packet, 0, size);
+  // memset(packet, 0, size);
   packet += ETH_PAYLOAD_ALIGNMENT_SHIFT;
   return packet;
 
